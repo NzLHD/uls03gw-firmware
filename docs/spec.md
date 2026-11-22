@@ -68,9 +68,13 @@ Items marked **⚠ verify** have not been confirmed on hardware or in an SDK yet
   - USB mode and the setup page now run under a software watchdog (180 s); the SDK's own watchdogs never
     catch a stuck application thread.
   - The battery awake cap no longer writes flash while the stuck thread might be writing it.
-  - Suspected for battery mode: a timer wake reported by Tuya's bootloader as power-on would stop the minute
-    clock, so the heartbeat never comes due. rc1 treats a deep-sleep wake without the button bit as a timer
-    wake and logs the raw wake registers; the UART log will confirm it.
+  - Battery mode checked with rc1 on hardware (2026-11-22, 5 min reads, 1 h heartbeat): no bug. Timer wakes
+    report `start_type` 4 (DEEPPS_RTC; `SCTRL_ROSC_TIMER` bit 8 set), button wakes 3 (DEEPPS_GPIO,
+    `gpio_raw` 0x40), retention 2 on both. The clock advances 5 min per wake; an unchanged level with the
+    heartbeat not yet due correctly sends nothing. The "no second message" was the send rules: change > 2 cm,
+    alarm, button, or heartbeat.
+  - Still open: a button wake doesn't advance the clock (the part of the sleep before the press is lost), so
+    each press delays the heartbeat by up to one read interval.
 - Only one device and hardware revision (V1.3) has been tested.
 
 ### Roadmap
