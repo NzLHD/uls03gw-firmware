@@ -12,7 +12,9 @@
 #include "BkDriverFlash.h"
 #include "board.h"
 
-extern UINT32 uls_boot_retention;           /* sdk-patches/0003 */
+/* wake registers sampled at boot (sdk-patches/0003) */
+extern UINT32 uls_boot_retention, uls_boot_rosc_timer, uls_boot_gpio_wake_raw, uls_boot_gpio_wake_bak;
+#define ROSC_TIMER_INT_STATUS  (1UL << 8)       /* SCTRL_ROSC_TIMER, see sys_ctrl.h */
 
 #undef BIT
 #define BIT(n) (1UL << (n))
@@ -87,18 +89,32 @@ void board_init(void)
 uls_wake_t board_wake_reason(void)
 {
     RESET_SOURCE_STATUS st = bk_misc_get_start_type();
+    uls_wake_t w;
     switch (st) {
-    case RESET_SOURCE_DEEPPS_RTC:  return WAKE_TIMER;
-    case RESET_SOURCE_DEEPPS_GPIO: return WAKE_BUTTON;
-    case RESET_SOURCE_WATCHDOG:    return WAKE_WATCHDOG;
+    case RESET_SOURCE_DEEPPS_RTC:  w = WAKE_TIMER; break;
+    case RESET_SOURCE_DEEPPS_GPIO: w = WAKE_BUTTON; break;
+    case RESET_SOURCE_WATCHDOG:    w = WAKE_WATCHDOG; break;
     case RESET_SOURCE_POWERON:
-        /* Tuya's bootloader: retention reads 2 after any deep-sleep wake (spec §0) */
-        if ((uls_boot_retention & SW_RETENTION_VAL_MASK) == 2)
-            return WAKE_BUTTON;
-        return WAKE_POWER_ON;
+        /* Tuya's bootloader: retention reads 2 after any deep-sleep wake (spec §0). A button
+         * wake shows up as DEEPPS_GPIO (patch 0003), so a deep-sleep wake reported as
+         * power-on is the RTC unless the P6 bit is set after all. */
+        if ((uls_boot_retention & SW_RETENTION_VAL_MASK) == 2) {
+            if ((uls_boot_gpio_wake_raw | uls_boot_gpio_wake_bak) & BIT(PIN_BUTTON))
+                w = WAKE_BUTTON;
+            else
+                w = WAKE_TIMER;
+        } else {
+            w = WAKE_POWER_ON;
+        }
+        break;
     default:
-        return WAKE_POWER_ON;
+        w = WAKE_POWER_ON;
+        break;
     }
+    LOG("wake: start_type=%u retention=0x%x rosc=0x%x gpio_raw=0x%x gpio_bak=0x%x\r\n", (unsigned)st,
+        (unsigned)uls_boot_retention, (unsigned)uls_boot_rosc_timer, (unsigned)uls_boot_gpio_wake_raw,
+        (unsigned)uls_boot_gpio_wake_bak);
+    return w;
 }
 
 bool board_on_battery(void)    { return gpio_input(PIN_PWRMODE) != 0; }
@@ -160,6 +176,37 @@ void board_awake_cap(uint32_t seconds, void (*on_expire)(void))
     rtos_init_timer(&cap_timer, seconds * 1000u, cap_expired, 0);
     rtos_start_timer(&cap_timer);
 }
+
+/* ---------------------------------------------------------------- watchdog */
+
+/* The SDK feeds the hardware watchdog from the tick interrupt and its task watchdog only
+ * prints, so neither catches a stuck application thread. This one runs in the timer task
+ * and reboots when the main loop hasn't fed it for wd_limit_ms. */
+static beken_timer_t       wd_timer;
+static volatile uint32_t   wd_fed, wd_limit_ms;
+
+static void wd_check(void *arg)
+{
+    (void)arg;
+    if (wd_limit_ms && board_ms() - wd_fed > wd_limit_ms) {
+        LOG("watchdog: main loop stuck for %u s, rebooting\r\n", (unsigned)((board_ms() - wd_fed) / 1000u));
+        board_reboot();
+    }
+}
+
+void board_watchdog_start(uint32_t seconds)
+{
+    static bool started;
+    wd_fed = board_ms();
+    wd_limit_ms = seconds * 1000u;
+    if (!started) {
+        started = true;
+        rtos_init_timer(&wd_timer, 5000, wd_check, 0);
+        rtos_start_timer(&wd_timer);
+    }
+}
+
+void board_watchdog_feed(void) { wd_fed = board_ms(); }
 
 /* ---------------------------------------------------------------- flash */
 

@@ -29,6 +29,10 @@
 #define TX_BUF   1536
 #define IO_MS    5000
 
+/* mbedtls/net_sockets.h values (that header pulls in the SDK's own net layer) */
+#define ERR_NET_SEND_FAILED  (-0x004E)
+#define ERR_NET_RECV_FAILED  (-0x004C)
+
 typedef struct {
     int fd;
     bool tls, open;
@@ -42,7 +46,7 @@ typedef struct {
     uint32_t unix_time;
     uint16_t next_id;
     uint16_t keepalive_s;
-    uint32_t last_tx_ms;
+    uint32_t last_tx_ms, last_rx_ms;
     mq_msg_fn on_msg;
     void *ctx;
     uint8_t rx[RX_BUF];
@@ -95,18 +99,33 @@ static int tcp_connect(const uint8_t ip[4], uint16_t port, uint32_t timeout_ms)
     return fd;
 }
 
+/* After send()/recv() returned -1: was it only SO_SNDTIMEO/SO_RCVTIMEO expiring, or is the
+ * connection gone (reset, aborted, closed)? lwIP keeps the latter as the pending error. */
+static bool sock_failed(int fd)
+{
+    int e = 0;
+    socklen_t l = sizeof(e);
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &e, &l) != 0) return true;
+    return e != 0 && e != EWOULDBLOCK && e != EAGAIN;
+}
+
 static int bio_send(void *ctx, const unsigned char *buf, size_t len)
 {
-    int n = send(*(int *)ctx, buf, len, 0);
-    return n >= 0 ? n : MBEDTLS_ERR_SSL_WANT_WRITE;
+    int fd = *(int *)ctx;
+    int n = send(fd, buf, len, 0);
+    if (n >= 0) return n;
+    /* a dead socket must fail, not "try again" forever (io_write also has a deadline) */
+    return sock_failed(fd) ? ERR_NET_SEND_FAILED : MBEDTLS_ERR_SSL_WANT_WRITE;
 }
 
 static int bio_recv(void *ctx, unsigned char *buf, size_t len)
 {
-    int n = recv(*(int *)ctx, buf, len, 0);
+    int fd = *(int *)ctx;
+    int n = recv(fd, buf, len, 0);
     if (n > 0) return n;
     if (n == 0) return MBEDTLS_ERR_SSL_CONN_EOF;
-    return MBEDTLS_ERR_SSL_TIMEOUT;     /* SO_RCVTIMEO expired (callers bound the total time) */
+    /* SO_RCVTIMEO expired (callers bound the total time), or the connection is gone */
+    return sock_failed(fd) ? ERR_NET_RECV_FAILED : MBEDTLS_ERR_SSL_TIMEOUT;
 }
 
 /* days from 1970-01-01 (civil calendar) */
@@ -181,17 +200,28 @@ int mq_ca_check(const char *pem, char *err, size_t errlen)
 
 /* ---------------------------------------------------------------- raw I/O */
 
+/* Write all of b, or fail within IO_MS. A failure leaves the session closed for writing:
+ * the caller must mq_close() and reconnect. */
 static int io_write(const uint8_t *b, size_t n)
 {
+    uint32_t t0 = board_ms();
     while (n) {
         int w = S.tls ? mbedtls_ssl_write(&S.ssl, b, n) : send(S.fd, b, n, 0);
-        if (w == MBEDTLS_ERR_SSL_WANT_WRITE || w == MBEDTLS_ERR_SSL_WANT_READ) continue;
-        if (w <= 0) return -1;
+        if (w == MBEDTLS_ERR_SSL_WANT_WRITE || w == MBEDTLS_ERR_SSL_WANT_READ ||
+            (!S.tls && w < 0 && !sock_failed(S.fd))) {
+            if (board_ms() - t0 >= IO_MS) { LOG("mqtt: write timed out\r\n"); goto fail; }
+            board_delay(10);
+            continue;
+        }
+        if (w <= 0) { LOG("mqtt: write failed (%d)\r\n", w); goto fail; }
         b += w;
         n -= (size_t)w;
     }
     S.last_tx_ms = board_ms();
     return 0;
+fail:
+    S.open = false;
+    return -1;
 }
 
 /* Read more bytes into S.rx. 1 = got data, 0 = timeout, -1 = closed/error. */
@@ -233,6 +263,7 @@ static int next_packet(uint32_t timeout_ms, mqtt_msg_t *m)
         if (f < 0) return -1;
         if (f == 1) {
             if (mqtt_parse(S.rx, total, m) != 0) return -1;
+            S.last_rx_ms = board_ms();
             return (int)total;
         }
         uint32_t el = board_ms() - t0;
@@ -380,6 +411,7 @@ int mq_open(const mq_opts_t *o, char *err, size_t errlen)
         goto fail;
     }
     S.open = true;
+    S.last_rx_ms = board_ms();
     LOG("mqtt: connected\r\n");
     return 0;
 
@@ -402,6 +434,7 @@ int mq_publish(const char *topic, const void *payload, size_t len, uint8_t qos, 
     if (!qos) return 0;
     if (wait_for(MQTT_PUBACK, id, IO_MS, NULL) != 1) {
         snprintf(S.err, sizeof(S.err), "mqtt: no PUBACK for %s", topic);
+        S.open = false;                 /* don't keep using a session that stopped answering */
         return -1;
     }
     return 0;
@@ -432,7 +465,17 @@ int mq_poll(uint32_t timeout_ms)
         uint32_t el = board_ms() - t0;
         if (S.keepalive_s && board_ms() - S.last_tx_ms > (uint32_t)S.keepalive_s * 500u) {
             int n = mqtt_enc_pingreq(S.tx, sizeof(S.tx));
-            if (io_write(S.tx, (size_t)n) != 0) { S.open = false; return -1; }
+            if (io_write(S.tx, (size_t)n) != 0) {
+                snprintf(S.err, sizeof(S.err), "mqtt: connection lost (send)");
+                return -1;
+            }
+        }
+        /* pings go out every keepalive/2 and the broker answers each one: silence for
+         * 1.5 x keepalive means the link is dead even if TCP hasn't noticed yet */
+        if (S.keepalive_s && board_ms() - S.last_rx_ms > (uint32_t)S.keepalive_s * 1500u) {
+            S.open = false;
+            snprintf(S.err, sizeof(S.err), "mqtt: no reply from broker for %u s", (unsigned)S.keepalive_s * 3u / 2u);
+            return -1;
         }
         if (el >= timeout_ms) return 0;
         int n = next_packet(timeout_ms - el, &m);

@@ -10,7 +10,7 @@
 #include "abstore.h"
 #include "ha_discovery.h"   /* uls_wake_t */
 
-#define FW_VERSION      "0.2.2"
+#define FW_VERSION      "0.2.3-rc1"
 
 /* Pins (spec §1), Beken GPIO numbers */
 #define PIN_BUTTON      6
@@ -62,6 +62,11 @@ void        board_reboot(void) __attribute__((noreturn));
 /* Battery awake cap (spec §5.1): after `seconds`, call `on_expire` (from a timer task),
  * which should save state and sleep. */
 void        board_awake_cap(uint32_t seconds, void (*on_expire)(void));
+
+/* Software watchdog for long-running loops (USB mode, setup page): reboots if not fed for
+ * `seconds`. feed() is harmless before start(). */
+void        board_watchdog_start(uint32_t seconds);
+void        board_watchdog_feed(void);
 
 const flash_ops_t *board_flash_ops(void);
 

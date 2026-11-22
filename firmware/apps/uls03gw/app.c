@@ -24,6 +24,7 @@
 #define WIFI_TIMEOUT_MS   15000
 #define SNTP_HOST         "pool.ntp.org"
 #define SET_MAX           1024
+#define MAINS_WATCHDOG_S  180       /* longest legitimate step: Wi-Fi 30 s + TLS connect ~40 s */
 
 static uls_config_t g_cfg, g_tmp, g_test;       /* 4.8 KB each */
 static char         g_scratch[CFG_CA_PEM_MAX + 256];
@@ -386,23 +387,39 @@ void app_factory_reset(void)
 
 /* ---------------------------------------------------------------- modes */
 
-static void sleep_battery(void)
+static void sleep_battery_ex(bool from_cap)
 {
     uint32_t awake_s = board_ms() / 1000u;
     uint32_t sleep_s = (uint32_t)g_cfg.read_interval_min * 60u;
     sleep_s = sleep_s > awake_s + 10 ? sleep_s - awake_s : 10;
     g_rs.sleep_min = (uint16_t)g_cfg.read_interval_min;
-    storage_save_runstate(&g_rs);
+    if (from_cap) storage_save_runstate_final(&g_rs);
+    else storage_save_runstate(&g_rs);
     board_deep_sleep(sleep_s);
 }
 
+static void sleep_battery(void) { sleep_battery_ex(false); }
+
+/* Runs in the timer task: the application thread is stuck somewhere (Wi-Fi/TLS), possibly
+ * mid flash write. Let that write finish and block any later one, then record a failed send
+ * and sleep. */
 static void cap_expired(void)
 {
-    /* stuck somewhere (Wi-Fi/TLS): count it as a failed send and sleep */
     policy_cfg_t pc = { g_cfg.change_threshold_cm, (uint32_t)g_cfg.heartbeat_h * 60u };
+    storage_freeze();
     policy_on_send_result(&pc, &g_rs.policy, &g_level, now_min(), false);
     g_rs.flags &= (uint8_t)~RS_FLAG_LAST_SEND_OK;
-    sleep_battery();
+    sleep_battery_ex(true);
+}
+
+/* One line per decision, so a UART log shows why a send did or didn't happen. */
+static void log_decision(const char *mode, const policy_cfg_t *pc, uint32_t why)
+{
+    const policy_state_t *p = &g_rs.policy;
+    LOG("%s: now=%u min, depth=%ld cm (last sent %ld), send=0x%02x, last send at %u min, "
+        "heartbeat %u min, fails=%u retry_after=%u\r\n", mode, (unsigned)g_rs.now_min, (long)g_level.depth_cm,
+        (long)p->sent_depth_cm, (unsigned)why, (unsigned)p->last_send_min, (unsigned)pc->heartbeat_min,
+        (unsigned)p->fail_count, (unsigned)p->retry_after_min);
 }
 
 static void run_setup(void)
@@ -440,7 +457,8 @@ static void battery_mode(bool button_press)
     why = policy_should_send(&pc, &g_rs.policy, &g_level, &ev);
     if (!config_wifi_ok(&g_cfg) || !config_mqtt_enabled(&g_cfg))
         why = 0;
-    LOG("battery: wake=%s depth=%ld send=0x%02x\r\n", wake_str(g_wake), (long)g_level.depth_cm, (unsigned)why);
+    LOG("battery: wake=%s, slept %u min\r\n", wake_str(g_wake), g_wake == WAKE_TIMER ? (unsigned)g_rs.sleep_min : 0u);
+    log_decision("battery", &pc, why);
 
     if (why) {
         if (button_press) led_set(LED_CONNECTING);
@@ -453,6 +471,7 @@ static void battery_mode(bool button_press)
         } else {
             g_rs.flags &= (uint8_t)~RS_FLAG_LAST_SEND_OK;
             snprintf(g_last_err, sizeof(g_last_err), "%s", err);
+            LOG("battery: send failed: %s\r\n", err);
         }
         if (button_press) {
             led_set(LED_OFF);
@@ -476,10 +495,12 @@ static void mains_mode(void)
     uint32_t down_since = 0;
 
     led_set(LED_MAINS);
+    board_watchdog_start(MAINS_WATCHDOG_S);
     topic(status_t, sizeof(status_t), "status");
     topic(set_t, sizeof(set_t), "set");
 
     for (;;) {
+        board_watchdog_feed();
         /* power source changed: restart in the right mode (spec §5.2) */
         if (board_on_battery()) board_reboot();
 
@@ -518,6 +539,7 @@ static void mains_mode(void)
             }
             if (!ok) {
                 snprintf(g_last_err, sizeof(g_last_err), "%s", err);
+                LOG("mains: connect failed: %s (retry in %u s)\r\n", err, (unsigned)(backoff / 1000u));
                 mq_close(false);
                 retry_at = board_ms() + backoff;
                 if (backoff < 300000) backoff *= 2;
@@ -532,6 +554,7 @@ static void mains_mode(void)
             next_read = board_ms() + (uint32_t)g_cfg.mains_read_s * 1000u;
             uint32_t why = policy_should_send(&pc, &g_rs.policy, &g_level, &ev);
             force = false;
+            log_decision(mq_is_open() ? "mains" : "mains (offline)", &pc, why);
             if (why && mq_is_open()) {
                 g_rssi = wifi_rssi();
                 int ok = publish_state() == 0;
@@ -539,14 +562,23 @@ static void mains_mode(void)
                 if (ok) {
                     g_rs.reads_since_send = 0;
                     g_rs.flags |= RS_FLAG_LAST_SEND_OK;
+                    g_last_err[0] = 0;
                     storage_save_runstate(&g_rs);
+                } else {
+                    /* the session is closed on a failed publish: reconnect and resend */
+                    snprintf(g_last_err, sizeof(g_last_err), "%s", mq_last_error());
+                    LOG("mains: publish failed: %s\r\n", g_last_err);
+                    g_rs.flags &= (uint8_t)~RS_FLAG_LAST_SEND_OK;
+                    mq_close(false);
+                    retry_at = board_ms() + 2000;
                 }
             }
         }
 
         if (mq_is_open()) {
             if (mq_poll(200) < 0) {
-                LOG("mains: connection lost\r\n");
+                snprintf(g_last_err, sizeof(g_last_err), "%s", mq_last_error());
+                LOG("mains: %s\r\n", g_last_err);
                 mq_close(false);
                 retry_at = board_ms() + 2000;
             }

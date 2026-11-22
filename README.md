@@ -8,7 +8,8 @@ cloud, no Tuya code.
 
 - **Battery:** reads every 30 min with Wi-Fi off and sends on change, alarm, button press or a 6 h heartbeat.
   Sleep is 52 µA, which gives an estimated ~5 years on 3× 18650.
-- **USB power:** stays connected and reads every 10 s.
+- **USB power:** stays connected, reads every 10 s and sends on a change of more than 2 cm, an alarm, or every
+  30 min.
 - **Setup:** a Wi-Fi access point with a web page (captive portal) to set everything.
 
 > Tested on one device (HW V1.3). Flashing replaces the Tuya app; keep your backup to go back.

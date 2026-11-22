@@ -60,8 +60,17 @@ Items marked **⚠ verify** have not been confirmed on hardware or in an SDK yet
 
 ### Known issues
 
-- Not yet reviewed in depth: TLS writes to a broken connection may retry without a time limit. Battery mode is
-  bounded by the 45 s awake cap; USB mode has no watchdog yet.
+- **Being tested (0.2.3-rc1):** a reported "first message is sent, the next one isn't" in USB and battery
+  mode.
+  - Found and fixed in rc1: a TLS write to a dead connection retried forever (USB mode froze; battery mode was
+    rescued by the 45 s cap). Writes now give up after 5 s, a broker that stops answering pings for 1.5 ×
+    keepalive closes the session, a missing PUBACK closes it, and USB mode reconnects and resends.
+  - USB mode and the setup page now run under a software watchdog (180 s); the SDK's own watchdogs never
+    catch a stuck application thread.
+  - The battery awake cap no longer writes flash while the stuck thread might be writing it.
+  - Suspected for battery mode: a timer wake reported by Tuya's bootloader as power-on would stop the minute
+    clock, so the heartbeat never comes due. rc1 treats a deep-sleep wake without the button bit as a timer
+    wake and logs the raw wake registers; the UART log will confirm it.
 - Only one device and hardware revision (V1.3) has been tested.
 
 ### Roadmap

@@ -11,4 +11,10 @@ int  storage_save_config(const uls_config_t *cfg);
 int  storage_save_runstate(const runstate_t *rs);
 int  storage_factory_reset(void);
 
+/* For the battery awake cap, which runs in the timer task while the application thread may
+ * be stuck anywhere, including in the middle of a flash write: wait for a write in progress
+ * to finish, then refuse all further writes except storage_save_runstate_final(). */
+void storage_freeze(void);
+int  storage_save_runstate_final(const runstate_t *rs);
+
 #endif

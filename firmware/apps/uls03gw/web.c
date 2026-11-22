@@ -192,6 +192,7 @@ setup_exit_t web_setup_run(const char *ssid, const char *pass, uint32_t idle_tim
     for (;;) {
         fd_set rf;
         struct timeval tv = { 0, 200000 };
+        board_watchdog_feed();          /* only armed when setup was entered from USB mode */
         bool down = board_button_down();
         if (was_down && !down) { why = SETUP_EXIT_BUTTON; break; }  /* press-and-release */
         was_down = down;
