@@ -1,6 +1,6 @@
 # Changelog
 
-Images are attached to the [GitHub Releases](https://github.com/NzLHD/ULS-03GW/releases). Flash the app-only
+Images are attached to the [GitHub Releases](https://github.com/NzLHD/uls03gw-firmware/releases). Flash the app-only
 `uls03gw_UA_<version>.bin` at **0x11000**; never write a full/QIO image.
 
 ## 0.2.2

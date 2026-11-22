@@ -1,7 +1,7 @@
 # Security
 
 Please report security problems privately through GitHub's
-[private vulnerability reporting](https://github.com/NzLHD/ULS-03GW/security/advisories/new) rather than in a
+[private vulnerability reporting](https://github.com/NzLHD/uls03gw-firmware/security/advisories/new) rather than in a
 public issue.
 
 In scope: the setup access point and its HTTP API, MQTT and TLS handling, settings storage, and anything that

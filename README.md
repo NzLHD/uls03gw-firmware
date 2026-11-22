@@ -1,6 +1,6 @@
 # ULS-03GW clean firmware
 
-[![tests](https://github.com/NzLHD/ULS-03GW/actions/workflows/ci.yml/badge.svg)](https://github.com/NzLHD/ULS-03GW/actions/workflows/ci.yml)
+[![tests](https://github.com/NzLHD/uls03gw-firmware/actions/workflows/ci.yml/badge.svg)](https://github.com/NzLHD/uls03gw-firmware/actions/workflows/ci.yml)
 
 Cloud-free firmware for the **ULS-03GW ultrasonic tank level sensor** (Tuya T1-U-HL module, Beken BK7238). It
 reports the tank level to **your own MQTT broker** (TLS or plain), with **Home Assistant discovery**. No Tuya
@@ -33,7 +33,7 @@ The firmware was built by Claude (Anthropic's AI model). The developer tested an
 - A USB-UART adapter at **3.3 V logic** (FT232/CH340/CP2102).
 - A separate **3.3 V supply**: the adapter's 3V3 pin is too weak.
 - [BK7231GUIFlashTool](https://github.com/openshwprojects/BK7231GUIFlashTool), run in **BK7238** mode.
-- The image `uls03gw_UA_0.2.2.bin` from the [latest release](https://github.com/NzLHD/ULS-03GW/releases/latest).
+- The image `uls03gw_UA_0.2.2.bin` from the [latest release](https://github.com/NzLHD/uls03gw-firmware/releases/latest).
   Check it against the release's `SHA256SUMS`.
 
 ## 2. Wiring (T1-U-HL module pads)
