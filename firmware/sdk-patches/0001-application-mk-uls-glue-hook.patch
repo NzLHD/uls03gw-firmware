@@ -1,0 +1,15 @@
+diff --git a/application.mk b/application.mk
+index 09ea9f3..821b2b9 100644
+--- a/application.mk
++++ b/application.mk
+@@ -637,6 +637,10 @@ LIBFLAGS += -L./ -los -llwip -lmbedtls -ldriver -lfunc -lmisc -lsrc_s
+ 
+ LIBFLAGS += -Wl,--whole-archive -lapp -Wl,--no-whole-archive -Wl,--allow-multiple-definition
+ -include ../../platforms/BK723x/OpenBeken.mk
++# ULS-03GW clean firmware glue (firmware/sdk_glue.mk)
++ifneq ($(strip $(ULS_GLUE_MK)),)
++include $(ULS_GLUE_MK)
++endif
+ 
+ .PHONY: application
+ ifeq  ("${CFG_SUPPORT_RTOS}", "4")

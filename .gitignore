@@ -1,0 +1,35 @@
+# --- Never commit: device secrets / proprietary material -----------------------
+# Full flash dump (device uuid, auth_key, psk, local key, Wi-Fi credentials)
+readResult_*.bin
+*.bin
+# Images are published as GitHub Release assets, never committed
+*.elf
+*.map
+*.rbl
+# Stock-firmware analysis: Tuya firmware images, secret flash regions, decompiled
+# Tuya code, and the reconstruction of Tuya's proprietary app (contains the product key)
+/re/
+/src/
+# Beken SDK checkout (separate git repo, no license file, binary blobs); we keep
+# our changes as firmware/sdk-patches/ and document how to clone it
+/sdk/
+# Anything that looks like a key or a broker certificate private part
+*.key
+*.pem
+secrets*
+# --- Build outputs ---------------------------------------------------------------
+/firmware/out/
+/firmware/apps/*/web_page.h
+/firmware/tests/unit_tests
+/firmware/tests/obj-arm/
+*.o
+*.d
+# --- Editor / OS -------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# --- Local assistant files (not part of the project) ---------------------------------
+CLAUDE.md
+.claude/

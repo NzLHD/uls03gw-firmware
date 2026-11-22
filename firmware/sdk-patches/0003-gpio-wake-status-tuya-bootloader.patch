@@ -1,0 +1,35 @@
+diff --git a/beken378/driver/sys_ctrl/sys_ctrl.c b/beken378/driver/sys_ctrl/sys_ctrl.c
+index 961d092..23611d8 100644
+--- a/beken378/driver/sys_ctrl/sys_ctrl.c
++++ b/beken378/driver/sys_ctrl/sys_ctrl.c
+@@ -3830,12 +3830,30 @@ void sctrl_enter_rtos_deep_sleep(PS_DEEP_CTRL_PARAM *deep_param)
+     delay(5);
+ }
+ 
++#ifdef ULS03GW_TUYA_T1_LAYOUT
++/* ULS-03GW: wake-source registers as found at boot, before the SDK clears them. */
++UINT32 uls_boot_gpio_wake_bak, uls_boot_gpio_wake_raw, uls_boot_rosc_timer, uls_boot_retention;
++#endif
++
+ int bk_init_deep_wakeup_gpio_status(void)
+ {
+     #if (CFG_SOC_NAME == SOC_BK7252N)
+     sys_wakeup_status = REG_READ(SCTRL_SYS_WKUP);
+     #endif
+     gpio_0_31_status = REG_READ(GPIO_WAKEUP_INT_STATUS_BAK);
++    #ifdef ULS03GW_TUYA_T1_LAYOUT
++    /* Beken's bootloader copies the GPIO wake status to GPIO_WAKEUP_INT_STATUS_BAK
++     * before clearing it; Tuya's T1 bootloader does not, so a GPIO wake would be
++     * reported as power-on. Fall back to the live register. */
++    uls_boot_gpio_wake_bak = gpio_0_31_status;
++    uls_boot_gpio_wake_raw = REG_READ(SCTRL_GPIO_WAKEUP_INT_STATUS);
++    uls_boot_rosc_timer = REG_READ(SCTRL_ROSC_TIMER);
++    /* Reads 2 after a deep-sleep wake and 0 after power-on at this point; SDK init
++     * writes it later, so it must be sampled here. */
++    uls_boot_retention = REG_READ(SCTRL_SW_RETENTION);
++    if (gpio_0_31_status == 0)
++        gpio_0_31_status = uls_boot_gpio_wake_raw;
++    #endif
+     #if (CFG_SOC_NAME != SOC_BK7231N) && (CFG_SOC_NAME != SOC_BK7236) && (CFG_SOC_NAME != SOC_BK7238)
+     gpio_32_39_status = REG_READ(GPIO_WAKEUP_INT_STATUS1_BAK);
+     #endif

@@ -1,0 +1,14 @@
+diff --git a/beken378/func/user_driver/BkDriverFlash.c b/beken378/func/user_driver/BkDriverFlash.c
+index 6b81954..3312a09 100644
+--- a/beken378/func/user_driver/BkDriverFlash.c
++++ b/beken378/func/user_driver/BkDriverFlash.c
+@@ -125,6 +125,9 @@ const bk_logic_partition_t bk7231_partitions_2M[BK_PARTITION_MAX] =
+         .partition_start_addr      = 0x1e0000,// bootloader unused space for rf cal+mac related info.
+ #elif (CFG_SOC_NAME == SOC_BK7231N)
+         .partition_start_addr      = 0x1d0000,
++#elif defined(ULS03GW_TUYA_T1_LAYOUT)
++        /* ULS-03GW (Tuya T1 module): factory RF calibration + MAC TLV lives at 0x1E3000. */
++        .partition_start_addr      = 0x1e3000,
+ #else
+         .partition_start_addr      = 0x1e0000,// for rf related info
+ #endif

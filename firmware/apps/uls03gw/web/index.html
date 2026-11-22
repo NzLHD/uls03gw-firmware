@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ULS-03GW setup</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--fg:#1d2329;--mut:#66727e;--acc:#1f6feb;--bad:#c62828;--ok:#2e7d32;--line:#d8dee4}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1419;--card:#1a2129;--fg:#e6edf3;--mut:#8b98a5;--acc:#4493f8;--bad:#f47067;--ok:#57ab5a;--line:#30363d}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--fg)}
+main{max-width:640px;margin:0 auto;padding:12px 16px 40px}h1{font-size:20px;margin:8px 0 2px}.sub{color:var(--mut);margin:0 0 12px}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:12px 0}
+h2{font-size:15px;margin:0 0 8px}label{display:block;margin:8px 0 2px;color:var(--mut);font-size:13px}
+input,select,textarea{width:100%;padding:8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
+textarea{min-height:90px;font:12px ui-monospace,monospace}.row{display:flex;gap:10px}.row>div{flex:1;min-width:0}
+.chk{display:flex;align-items:center;gap:8px;margin:10px 0 0;color:var(--fg)}.chk input{width:auto}
+button{padding:9px 14px;margin:6px 6px 0 0;border:0;border-radius:6px;background:var(--acc);color:#fff;font:inherit;cursor:pointer}
+button.sec{background:transparent;color:var(--acc);border:1px solid var(--acc)}button.bad{background:var(--bad)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:2px 12px;font-size:14px}.kv b{font-weight:500;color:var(--mut)}
+#msg{position:sticky;top:0;padding:8px 12px;border-radius:6px;margin:8px 0;display:none}#msg.ok{display:block;background:var(--ok);color:#fff}#msg.err{display:block;background:var(--bad);color:#fff}
+.hint{color:var(--mut);font-size:12px;margin:4px 0 0}pre{white-space:pre-wrap;font-size:12px;margin:6px 0 0}
+</style></head><body><main>
+<h1>ULS-03GW tank sensor</h1><p class="sub" id="sub">loading…</p><div id="msg"></div>
+
+<section><h2>Status</h2><div class="kv" id="st"></div>
+<button class="sec" onclick="readNow()">Read sensor now</button><pre id="rd"></pre></section>
+
+<section><h2>Wi-Fi</h2>
+<label>Network</label><div class="row"><div><select id="ssidsel" onchange="if(this.value)f('wifi_ssid').value=this.value"><option value="">— choose or type below —</option></select></div><div style="flex:0 0 auto"><button class="sec" onclick="scan()" style="margin:0">Scan</button></div></div>
+<input name="wifi_ssid" placeholder="SSID" maxlength="32">
+<label>Password</label><input name="wifi_pass" type="password" maxlength="64">
+<label>Host name</label><input name="hostname" maxlength="32">
+<label class="chk"><input type="checkbox" name="wifi_static" onchange="vis()">Static IP (saves ~1 s per send)</label>
+<div id="static"><div class="row"><div><label>IP</label><input name="wifi_ip"></div><div><label>Netmask</label><input name="wifi_mask"></div></div>
+<div class="row"><div><label>Gateway</label><input name="wifi_gw"></div><div><label>DNS</label><input name="wifi_dns"></div></div></div>
+</section>
+
+<section><h2>MQTT</h2>
+<div class="row"><div><label>Broker host / IP</label><input name="mqtt_host" maxlength="128"></div><div style="flex:0 0 90px"><label>Port</label><input name="mqtt_port" type="number"></div></div>
+<label class="chk"><input type="checkbox" name="mqtt_tls" onchange="vis()">TLS (recommended)</label>
+<div id="tls"><label>CA certificate (PEM)</label><textarea name="mqtt_ca_pem" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+<input type="file" accept=".crt,.pem,.cer" onchange="loadCa(this)" style="border:0;padding:4px 0">
+<label class="chk"><input type="checkbox" name="mqtt_verify_host">Check broker name against the certificate</label></div>
+<p class="hint" id="plainwarn" style="color:var(--bad)">Without TLS, the MQTT password and data travel unencrypted.</p>
+<div class="row"><div><label>User</label><input name="mqtt_user" maxlength="64"></div><div><label>Password</label><input name="mqtt_pass" type="password" maxlength="64"></div></div>
+<label>Client ID</label><input name="mqtt_client_id" maxlength="64">
+<label>Base topic</label><input name="mqtt_base_topic" maxlength="64">
+<label class="chk"><input type="checkbox" name="ha_discovery">Home Assistant discovery</label>
+<label>Discovery prefix</label><input name="ha_prefix" maxlength="32">
+</section>
+
+<section><h2>Tank</h2>
+<div class="row"><div><label>Install height (cm, sensor to bottom)</label><input name="install_height_cm" type="number"></div>
+<div><label>Full distance (cm, sensor to full line)</label><input name="full_distance_cm" type="number"></div></div>
+<button class="sec" onclick="useFull()">Use current distance as full</button>
+<div class="row"><div><label>Upper alarm % (0 = off)</label><input name="upper_alarm_pct" type="number"></div>
+<div><label>Lower alarm % (0 = off)</label><input name="lower_alarm_pct" type="number"></div></div>
+<label>Tank volume (L, 0 = off)</label><input name="tank_volume_l" type="number">
+</section>
+
+<section><h2>Schedule</h2>
+<div class="row"><div><label>Battery: read every (min)</label><input name="read_interval_min" type="number"></div>
+<div><label>Battery: heartbeat (h)</label><input name="heartbeat_h" type="number"></div></div>
+<div class="row"><div><label>USB: read every (s)</label><input name="mains_read_s" type="number"></div>
+<div><label>USB: heartbeat (min)</label><input name="mains_heartbeat_min" type="number"></div></div>
+<label>Send when the depth changes by more than (cm)</label><input name="change_threshold_cm" type="number">
+</section>
+
+<section><h2>Sensor (advanced)</h2>
+<div class="row"><div><label>Warm-up (ms)</label><input name="sensor_warmup_ms" type="number"></div>
+<div><label>Poll (ms, ≥ 450)</label><input name="sensor_poll_ms" type="number"></div>
+<div><label>Samples</label><input name="sensor_samples" type="number"></div></div>
+</section>
+
+<section><h2>Device</h2>
+<label>Setup AP password (empty = open AP)</label><input name="ap_password" type="password" maxlength="63">
+<label>Setup AP timeout (min)</label><input name="ap_timeout_min" type="number">
+<p class="hint">Passwords and the CA are never shown. Leave a field empty to keep the stored value; tick "clear" to remove it.</p>
+<div id="clears"></div>
+</section>
+
+<section><h2>Actions</h2>
+<button onclick="save()">Save</button><button class="sec" onclick="test()">Test Wi-Fi + MQTT</button>
+<button class="sec" onclick="post('/api/reboot')">Reboot</button><button class="bad" onclick="if(confirm('Erase all settings?'))post('/api/reset')">Factory reset</button>
+<pre id="tr"></pre></section>
+</main><script>
+const SECRETS=['wifi_pass','mqtt_pass','mqtt_ca_pem','ap_password'];let cfg={},lastDist=null;
+const f=n=>document.querySelector('[name='+n+']');const $=id=>document.getElementById(id);
+function msg(t,ok){const m=$('msg');m.textContent=t;m.className=ok?'ok':'err';clearTimeout(msg.t);msg.t=setTimeout(()=>m.className='',6000)}
+function vis(){$('static').style.display=f('wifi_static').checked?'':'none';$('tls').style.display=f('mqtt_tls').checked?'':'none';$('plainwarn').style.display=f('mqtt_tls').checked?'none':''}
+async function j(u,o){const r=await fetch(u,o);return r.json()}
+function kv(o){return Object.entries(o).map(([k,v])=>'<b>'+k+'</b><span>'+(v===null?'—':String(v).replace(/</g,'&lt;'))+'</span>').join('')}
+async function load(){const d=await j('/api/status');cfg=d.config;const s=d.status;
+ $('sub').textContent='firmware '+s.fw+' · '+s.mac+' · '+s.power;$('st').innerHTML=kv(s);
+ for(const[k,v]of Object.entries(cfg)){const e=f(k);if(!e)continue;if(e.type=='checkbox')e.checked=!!v;else e.value=v}
+ $('clears').innerHTML=SECRETS.map(k=>'<label class="chk"><input type="checkbox" id="clr_'+k+'">clear '+k+(cfg[k+'_set']?' (set)':' (empty)')+'</label>').join('');
+ SECRETS.forEach(k=>{f(k).value='';f(k).placeholder=cfg[k+'_set']?'(unchanged)':''});vis()}
+function collect(){const o={};document.querySelectorAll('[name]').forEach(e=>{const k=e.name;let v;
+  if(e.type=='checkbox')v=e.checked;else if(e.type=='number'){if(e.value==='')return;v=parseInt(e.value,10)}else v=e.value;
+  if(SECRETS.includes(k)){if($('clr_'+k)&&$('clr_'+k).checked)o[k]=null;else if(v)o[k]=v;return}
+  if(cfg[k]!==v)o[k]=v});return o}
+async function save(){const o=collect();if(!Object.keys(o).length){msg('Nothing changed',1);return}
+ const r=await j('/api/config',{method:'POST',body:JSON.stringify(o)});if(r.ok){msg('Saved',1);load()}else msg(r.error||'Save failed')}
+async function test(){$('tr').textContent='testing… (up to 40 s)';const r=await j('/api/test',{method:'POST',body:JSON.stringify(collect())});
+ $('tr').textContent=(r.steps||[]).map(s=>(s.ok?'✔ ':'✘ ')+s.step+(s.detail?': '+s.detail:'')).join('\n')||r.error}
+async function scan(){msg('Scanning…',1);const r=await j('/api/scan');const s=$('ssidsel');s.length=1;
+ (r.aps||[]).sort((a,b)=>b.rssi-a.rssi).forEach(a=>s.add(new Option(a.ssid+' ('+a.rssi+' dBm'+(a.auth?'':', open')+')',a.ssid)));msg((r.aps||[]).length+' networks',1)}
+async function readNow(){$('rd').textContent='reading…';const r=await j('/api/read');lastDist=r.distance_mm;$('rd').textContent=JSON.stringify(r,null,1)}
+function useFull(){if(lastDist==null){msg('Read the sensor first');return}f('full_distance_cm').value=Math.round(lastDist/10);msg('Full distance set; press Save',1)}
+function loadCa(i){const r=new FileReader();r.onload=()=>f('mqtt_ca_pem').value=r.result;if(i.files[0])r.readAsText(i.files[0])}
+async function post(u){const r=await j(u,{method:'POST'});msg(r.ok?'OK':(r.error||'failed'),r.ok)}
+load().catch(e=>msg('Cannot load status: '+e))
+</script></body></html>
