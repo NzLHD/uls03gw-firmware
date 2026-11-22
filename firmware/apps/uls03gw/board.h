@@ -10,7 +10,7 @@
 #include "abstore.h"
 #include "ha_discovery.h"   /* uls_wake_t */
 
-#define FW_VERSION      "0.2.3-rc1"
+#define FW_VERSION      "0.2.3"
 
 /* Pins (spec §1), Beken GPIO numbers */
 #define PIN_BUTTON      6

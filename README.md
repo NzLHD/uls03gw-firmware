@@ -34,7 +34,7 @@ The firmware was built by Claude (Anthropic's AI model). The developer tested an
 - A USB-UART adapter at **3.3 V logic** (FT232/CH340/CP2102).
 - A separate **3.3 V supply**: the adapter's 3V3 pin is too weak.
 - [BK7231GUIFlashTool](https://github.com/openshwprojects/BK7231GUIFlashTool), run in **BK7238** mode.
-- The image `uls03gw_UA_0.2.2.bin` from the [latest release](https://github.com/NzLHD/uls03gw-firmware/releases/latest).
+- The image `uls03gw_UA_0.2.3.bin` from the [latest release](https://github.com/NzLHD/uls03gw-firmware/releases/latest).
   Check it against the release's `SHA256SUMS`.
 
 ## 2. Wiring (T1-U-HL module pads)
@@ -55,7 +55,7 @@ The firmware was built by Claude (Anthropic's AI model). The developer tested an
 
 1. **Back up first:** read the full 2 MB twice and compare the checksums. The dump holds your device's keys,
    so keep it private.
-2. Write `uls03gw_UA_0.2.2.bin` at **0x11000**.
+2. Write `uls03gw_UA_0.2.3.bin` at **0x11000**.
    - **Never write a "QIO"/full image**: it replaces the bootloader.
    - The firmware leaves the bootloader, the factory RF calibration and the MAC alone.
 3. Optional: erase 0x1F5000–0x200000 (the old Tuya data). The firmware ignores it either way.

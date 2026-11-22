@@ -3,7 +3,9 @@
 Images are attached to the [GitHub Releases](https://github.com/NzLHD/uls03gw-firmware/releases). Flash the app-only
 `uls03gw_UA_<version>.bin` at **0x11000**; never write a full/QIO image.
 
-## 0.2.3-rc1 (pre-release, being tested)
+## 0.2.3
+
+Tested on hardware in USB and battery mode.
 
 - A TLS or TCP write to a dead connection no longer retries forever: writes give up after 5 s. Before, USB
   mode could freeze after a broker restart or Wi-Fi drop until it was power-cycled.
@@ -14,6 +16,7 @@ Images are attached to the [GitHub Releases](https://github.com/NzLHD/uls03gw-fi
 - Battery mode: a deep-sleep wake reported as power-on (no button bit) counts as a timer wake, so the clock and
   the heartbeat keep running.
 - The debug log shows the raw wake registers and, for every reading, why the device did or didn't send.
+- The setup page and manual are unchanged from 0.2.2.
 
 ## 0.2.2
 

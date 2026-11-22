@@ -25,7 +25,7 @@ Items marked **⚠ verify** have not been confirmed on hardware or in an SDK yet
 
 ---
 
-## 0. Status (firmware 0.2.2)
+## 0. Status (firmware 0.2.3)
 
 ### Confirmed on hardware (one device, HW V1.3)
 
@@ -58,23 +58,25 @@ Items marked **⚠ verify** have not been confirmed on hardware or in an SDK yet
   **battery connector**, never USB (USB pulls P9 LOW, so the device never sleeps). Add a 10 kΩ NTC so it
   doesn't charge below 0 °C.
 
+### Fixed in 0.2.3 (confirmed on hardware, 2026-11-22)
+
+- **USB mode no longer freezes** when the broker restarts or Wi-Fi drops. A TLS write to a dead connection used
+  to retry forever. Writes now give up after 5 s, a broker that stops answering pings for 1.5 × keepalive or
+  a missing PUBACK closes the session, and USB mode reconnects and resends. Confirmed working on USB by the owner.
+- USB mode and the setup page run under a software watchdog (180 s); the SDK's own watchdogs never catch a
+  stuck application thread.
+- The battery awake cap no longer writes flash while the stuck thread might be writing it.
+- **Battery mode wake detection checked** (5 min reads, 1 h heartbeat): timer wakes report `start_type` 4
+  (DEEPPS_RTC; `SCTRL_ROSC_TIMER` bit 8 set), button wakes 3 (DEEPPS_GPIO, `gpio_raw` 0x40), retention 2 on
+  both. The clock advances per wake, and an unchanged level with the heartbeat not yet due correctly sends
+  nothing. A reported "no second message" was the send rules: change > 2 cm, alarm, button, or heartbeat.
+
 ### Known issues
 
-- **Being tested (0.2.3-rc1):** a reported "first message is sent, the next one isn't" in USB and battery
-  mode.
-  - Found and fixed in rc1: a TLS write to a dead connection retried forever (USB mode froze; battery mode was
-    rescued by the 45 s cap). Writes now give up after 5 s, a broker that stops answering pings for 1.5 ×
-    keepalive closes the session, a missing PUBACK closes it, and USB mode reconnects and resends.
-  - USB mode and the setup page now run under a software watchdog (180 s); the SDK's own watchdogs never
-    catch a stuck application thread.
-  - The battery awake cap no longer writes flash while the stuck thread might be writing it.
-  - Battery mode checked with rc1 on hardware (2026-11-22, 5 min reads, 1 h heartbeat): no bug. Timer wakes
-    report `start_type` 4 (DEEPPS_RTC; `SCTRL_ROSC_TIMER` bit 8 set), button wakes 3 (DEEPPS_GPIO,
-    `gpio_raw` 0x40), retention 2 on both. The clock advances 5 min per wake; an unchanged level with the
-    heartbeat not yet due correctly sends nothing. The "no second message" was the send rules: change > 2 cm,
-    alarm, button, or heartbeat.
-  - Still open: a button wake doesn't advance the clock (the part of the sleep before the press is lost), so
-    each press delays the heartbeat by up to one read interval.
+- A button wake doesn't advance the clock (the part of the sleep before the press is lost), so each press
+  delays the heartbeat by up to one read interval.
+- The SDK's supplicant prints the Wi-Fi network name as hex (`new ie: 0 : …`) in the debug log; remove it
+  before sharing a log.
 - Only one device and hardware revision (V1.3) has been tested.
 
 ### Roadmap
